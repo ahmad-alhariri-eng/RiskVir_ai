@@ -1,0 +1,80 @@
+version: "3.9"
+
+services:
+
+  # ── Redis (message queue + history + rate limiter) ──────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Webhook API server (FastAPI) ────────────────────────────────────────
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      WEBHOOK_URL: ${WEBHOOK_URL}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: >
+      gunicorn main:api
+      --worker-class uvicorn.workers.UvicornWorker
+      --workers 4
+      --bind 0.0.0.0:8000
+      --timeout 60
+      --keep-alive 5
+
+  # ── AI Workers (scale this up for more throughput) ───────────────────────
+  # Default: 3 workers × 50 concurrent OrcaRouter calls each
+  worker-0:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: python worker.py --id 0
+
+  worker-1:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: python worker.py --id 1
+
+  worker-2:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: python worker.py --id 2
+
+  # Add more workers by duplicating the block above ↑
+
+volumes:
+  redis_data:

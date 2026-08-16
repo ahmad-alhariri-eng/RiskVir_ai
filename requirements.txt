@@ -1,0 +1,9 @@
+python-telegram-bot==21.6
+openai==2.6.1
+fastapi==0.118.0
+uvicorn[standard]==0.37.0
+gunicorn==23.0.0
+httpx==0.28.1
+redis==5.3.1
+cachetools==6.2.2
+python-dotenv==1.2.1
